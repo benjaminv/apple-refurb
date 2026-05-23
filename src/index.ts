@@ -45,12 +45,13 @@ export default {
     }
     if (url.pathname === '/test-push') {
       if (!env.BARK_BASE) return new Response('BARK_BASE not set\n', { status: 500 });
+      const tz = env.TZ || (req.cf?.timezone as string | undefined);
       const r = await fetch(env.BARK_BASE, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           title: 'apple-refurb-watcher test',
-          body: `End-to-end test at ${formatLocalTime(new Date(), env.TZ)}`,
+          body: `End-to-end test at ${formatLocalTime(new Date(), tz)}`,
           group: 'apple-refurb-test',
         }),
       });
@@ -130,8 +131,8 @@ function fetchApple(url: string): Promise<Response> {
 }
 
 function formatLocalTime(d: Date, tz?: string): string {
-  const timeZone = tz || 'Australia/Sydney';
-  return d.toLocaleString('sv-SE', { timeZone }) + ` ${timeZone}`;
+  if (!tz) return d.toISOString();
+  return `${d.toLocaleString('sv-SE', { timeZone: tz })} ${tz}`;
 }
 
 function decodeUtf8(buf: ArrayBuffer): string {
