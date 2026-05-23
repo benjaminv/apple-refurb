@@ -71,18 +71,12 @@ export default {
         headers: { 'content-type': 'text/plain; charset=utf-8' },
       });
     }
-    if (url.pathname === '/debug') {
-      const region = (url.searchParams.get('region') || 'au').toLowerCase();
-      const category = (url.searchParams.get('category') || 'mac').toLowerCase();
-      return Response.json(await debugPage({ region, category }));
-    }
     return new Response(
       [
         'apple-refurb-watcher',
         '',
         'GET /run                          trigger a check now',
         'GET /state                        inspect last saved snapshots',
-        'GET /debug?region=au&category=mac inspect parser against live HTML',
         'GET /raw?region=au&category=mac   fetch Apple page as text/plain (view source)',
         'GET /test-push                    fire a test Bark notification',
         '',
