@@ -306,6 +306,8 @@ async function debugPage(w: Watch): Promise<unknown> {
     tileSnippet = (cur?.outerHTML || '').slice(0, 1500);
   }
 
+  const products = parseProducts(html);
+  const mojibakeProbe = '10â€‘Core CPU — MacBookÂ Pro â€”';
   return {
     url,
     httpStatus: res.status,
@@ -313,7 +315,16 @@ async function debugPage(w: Watch): Promise<unknown> {
     productHrefsByRegex: hrefs.size,
     productHrefsSample: [...hrefs].slice(0, 5),
     productAnchorsByDom: anchors.length,
-    parsedByCurrentSelectors: parseProducts(html).length,
+    parsedByCurrentSelectors: products.length,
+    parsedNamesSample: products.slice(0, 3).map((p) => ({
+      name: p.name,
+      codes: [...p.name].map((c) => c.charCodeAt(0).toString(16)).join(' '),
+    })),
+    mojibakeSelfTest: {
+      input: mojibakeProbe,
+      cleanTextOutput: cleanText(mojibakeProbe),
+      fixMojibakeOutput: fixMojibake(mojibakeProbe),
+    },
     topAncestorClasses,
     tileSnippet,
   };
