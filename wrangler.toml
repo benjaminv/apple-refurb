@@ -1,0 +1,25 @@
+name = "apple-refurb-watcher"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+# Run every 10 minutes. Adjust to taste.
+[triggers]
+crons = ["*/10 * * * *"]
+
+# KV stores the last-seen snapshot per (region, category).
+# Create with: wrangler kv namespace create STATE
+# Then paste the returned id below.
+[[kv_namespaces]]
+binding = "STATE"
+id = "504f111abc3e493f97231c5469e6c97d"
+
+[vars]
+# Comma-separated list of "<region>:<category>".
+# Region: "us" (no path prefix) or a country code like "au", "uk", "ca", "jp", "de".
+# Category: "mac", "ipad", "iphone", "appletv", "homepod", "airpods", "accessories".
+# Worker only fetches pages listed here.
+WATCH = "au:mac"
+
+# BARK_BASE is your push endpoint, e.g. https://api.day.app/<device_key>
+# Set as a secret rather than committing it:
+#   wrangler secret put BARK_BASE
