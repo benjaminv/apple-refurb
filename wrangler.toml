@@ -11,7 +11,7 @@ crons = ["*/10 * * * *"]
 # Then paste the returned id below.
 [[kv_namespaces]]
 binding = "STATE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "504f111abc3e493f97231c5469e6c97d"
 
 [vars]
 # Comma-separated list of "<region>:<category>".
