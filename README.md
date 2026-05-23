@@ -21,27 +21,47 @@ Configurable per region and category — the Worker only fetches what you list.
 The first run for a new `region:category` is silent — it only writes the
 baseline. Subsequent runs notify on diffs.
 
-## Setup
+## Setup (deploy via GitHub Actions — no local wrangler needed)
+
+1. **Create a KV namespace** in the Cloudflare dashboard:
+   Workers & Pages → KV → Create namespace, name it `STATE`.
+   Copy the id and paste it into `wrangler.toml` (replacing
+   `REPLACE_WITH_KV_NAMESPACE_ID`). Commit and push.
+
+2. **Get your Bark URL** from the Bark iOS app
+   (https://github.com/Finb/Bark). Open the app and copy the URL at the top —
+   it looks like `https://api.day.app/AbC123dEf/`. Or use your self-hosted
+   Bark server URL.
+
+3. **Add three GitHub Actions secrets** at
+   `Settings → Secrets and variables → Actions`:
+
+   | Secret | Where to get it |
+   | --- | --- |
+   | `CLOUDFLARE_API_TOKEN` | https://dash.cloudflare.com/profile/api-tokens → "Edit Cloudflare Workers" template |
+   | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard, right sidebar |
+   | `BARK_BASE` | The Bark URL from step 2 |
+
+4. **Edit `WATCH`** in `wrangler.toml` — comma-separated `region:category`:
+
+   ```
+   WATCH = "au:mac"
+   WATCH = "au:mac,au:ipad,us:mac"
+   WATCH = "uk:mac,uk:ipad,uk:iphone"
+   ```
+
+5. **Deploy.** Push to `main`, or trigger the `Deploy` workflow manually from
+   the Actions tab (works from any branch). The workflow typechecks, pushes
+   `BARK_BASE` as a Worker secret, then `wrangler deploy`s.
+
+### Local development (optional)
 
 ```bash
 npm install
-npx wrangler login
-
-# 1. Create the KV namespace, then paste the returned id into wrangler.toml
-npx wrangler kv namespace create STATE
-
-# 2. Set your Bark endpoint as a secret
-#    Format: https://api.day.app/<your_device_key>  (or your self-hosted URL)
-npx wrangler secret put BARK_BASE
-
-# 3. Edit `WATCH` in wrangler.toml — comma-separated list of region:category
-#    Examples:
-#      WATCH = "au:mac"
-#      WATCH = "au:mac,au:ipad,us:mac"
-#      WATCH = "uk:mac,uk:ipad,uk:iphone"
-
-# 4. Deploy
-npm run deploy
+cp .dev.vars.example .dev.vars   # then edit BARK_BASE
+npm run dev
+# in another terminal:
+curl http://localhost:8787/run
 ```
 
 ## Manual endpoints
@@ -63,15 +83,6 @@ Once deployed, the Worker also responds to plain HTTP:
 If a watch logs `parsed 0 products`, either the region/category combo doesn't
 exist there, or Apple changed the HTML — adjust the selectors in
 `parseProducts()` in `src/index.ts`.
-
-## Local development
-
-```bash
-cp .dev.vars.example .dev.vars   # then edit BARK_BASE
-npm run dev
-# in another terminal:
-curl http://localhost:8787/run
-```
 
 ## Notes
 
