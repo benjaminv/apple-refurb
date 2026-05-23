@@ -42,12 +42,18 @@ export default {
       }
       return Response.json(out);
     }
+    if (url.pathname === '/debug') {
+      const region = (url.searchParams.get('region') || 'au').toLowerCase();
+      const category = (url.searchParams.get('category') || 'mac').toLowerCase();
+      return Response.json(await debugPage({ region, category }));
+    }
     return new Response(
       [
         'apple-refurb-watcher',
         '',
-        'GET /run   trigger a check now',
-        'GET /state inspect last saved snapshots',
+        'GET /run                          trigger a check now',
+        'GET /state                        inspect last saved snapshots',
+        'GET /debug?region=au&category=mac inspect parser against live HTML',
         '',
         `watching: ${env.WATCH}`,
       ].join('\n'),
@@ -93,9 +99,8 @@ function absolutize(href: string): string {
   return href.startsWith('http') ? href : `https://www.apple.com${href}`;
 }
 
-async function checkOne(w: Watch, env: Env): Promise<void> {
-  const url = pageUrl(w);
-  const res = await fetch(url, {
+function fetchApple(url: string): Promise<Response> {
+  return fetch(url, {
     headers: {
       'user-agent':
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
@@ -104,6 +109,11 @@ async function checkOne(w: Watch, env: Env): Promise<void> {
     },
     cf: { cacheTtl: 0, cacheEverything: false },
   });
+}
+
+async function checkOne(w: Watch, env: Env): Promise<void> {
+  const url = pageUrl(w);
+  const res = await fetchApple(url);
   if (!res.ok) throw new Error(`fetch ${url} -> HTTP ${res.status}`);
   const html = await res.text();
 
@@ -191,6 +201,58 @@ function parseProducts(html: string): Product[] {
 
 function cleanText(s: string): string {
   return s.replace(/\s+/g, ' ').trim();
+}
+
+async function debugPage(w: Watch): Promise<unknown> {
+  const url = pageUrl(w);
+  const res = await fetchApple(url);
+  if (!res.ok) return { url, httpStatus: res.status, ok: false };
+  const html = await res.text();
+
+  const hrefRe = /href="(\/(?:[a-z]{2}\/)?shop\/product\/[A-Z0-9]+\/[^"]+)"/g;
+  const hrefs = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = hrefRe.exec(html))) hrefs.add(m[1].split('?')[0]);
+
+  const root = parse(html);
+  const anchors = root.querySelectorAll('a[href*="/shop/product/"]');
+
+  const ancestorClassCounts: Record<string, number> = {};
+  for (const a of anchors.slice(0, 30)) {
+    let cur = a.parentNode as HTMLElement | null;
+    for (let depth = 0; depth < 5 && cur; depth++) {
+      const tag = (cur.rawTagName || '').toLowerCase();
+      const cls = (cur.getAttribute?.('class') || '').trim();
+      if (tag && cls) {
+        const key = `${tag}.${cls.split(/\s+/).filter(Boolean).join('.')}`;
+        ancestorClassCounts[key] = (ancestorClassCounts[key] || 0) + 1;
+      }
+      cur = cur.parentNode as HTMLElement | null;
+    }
+  }
+  const topAncestorClasses = Object.entries(ancestorClassCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15);
+
+  let tileSnippet = '';
+  const firstAnchor = anchors[0];
+  if (firstAnchor) {
+    let cur: HTMLElement | null = firstAnchor as unknown as HTMLElement;
+    for (let i = 0; i < 4 && cur?.parentNode; i++) cur = cur.parentNode as HTMLElement;
+    tileSnippet = (cur?.outerHTML || '').slice(0, 1500);
+  }
+
+  return {
+    url,
+    httpStatus: res.status,
+    htmlLength: html.length,
+    productHrefsByRegex: hrefs.size,
+    productHrefsSample: [...hrefs].slice(0, 5),
+    productAnchorsByDom: anchors.length,
+    parsedByCurrentSelectors: parseProducts(html).length,
+    topAncestorClasses,
+    tileSnippet,
+  };
 }
 
 async function notify(env: Env, w: Watch, ev: Event): Promise<void> {
