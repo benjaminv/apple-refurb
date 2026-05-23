@@ -273,69 +273,6 @@ function cleanText(s: string): string {
   return fixMojibake(s.replace(/\s+/g, ' ').trim());
 }
 
-async function debugPage(w: Watch): Promise<unknown> {
-  const url = pageUrl(w);
-  const res = await fetchApple(url);
-  if (!res.ok) return { url, httpStatus: res.status, ok: false };
-  const html = decodeUtf8(await res.arrayBuffer());
-
-  const hrefRe = /href="(\/(?:[a-z]{2}\/)?shop\/product\/[A-Za-z0-9]+\/[^"]+)"/gi;
-  const hrefs = new Set<string>();
-  let m: RegExpExecArray | null;
-  while ((m = hrefRe.exec(html))) hrefs.add(m[1].split('?')[0]);
-
-  const root = parse(html);
-  const anchors = root.querySelectorAll('a[href*="/shop/product/"]');
-
-  const ancestorClassCounts: Record<string, number> = {};
-  for (const a of anchors.slice(0, 30)) {
-    let cur = a.parentNode as HTMLElement | null;
-    for (let depth = 0; depth < 5 && cur; depth++) {
-      const tag = (cur.rawTagName || '').toLowerCase();
-      const cls = (cur.getAttribute?.('class') || '').trim();
-      if (tag && cls) {
-        const key = `${tag}.${cls.split(/\s+/).filter(Boolean).join('.')}`;
-        ancestorClassCounts[key] = (ancestorClassCounts[key] || 0) + 1;
-      }
-      cur = cur.parentNode as HTMLElement | null;
-    }
-  }
-  const topAncestorClasses = Object.entries(ancestorClassCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 15);
-
-  let tileSnippet = '';
-  const firstAnchor = anchors[0];
-  if (firstAnchor) {
-    let cur: HTMLElement | null = firstAnchor as unknown as HTMLElement;
-    for (let i = 0; i < 4 && cur?.parentNode; i++) cur = cur.parentNode as HTMLElement;
-    tileSnippet = (cur?.outerHTML || '').slice(0, 1500);
-  }
-
-  const products = parseProducts(html);
-  const mojibakeProbe = '10â€‘Core CPU — MacBookÂ Pro â€”';
-  return {
-    url,
-    httpStatus: res.status,
-    htmlLength: html.length,
-    productHrefsByRegex: hrefs.size,
-    productHrefsSample: [...hrefs].slice(0, 5),
-    productAnchorsByDom: anchors.length,
-    parsedByCurrentSelectors: products.length,
-    parsedNamesSample: products.slice(0, 3).map((p) => ({
-      name: p.name,
-      codes: [...p.name].map((c) => c.charCodeAt(0).toString(16)).join(' '),
-    })),
-    mojibakeSelfTest: {
-      input: mojibakeProbe,
-      cleanTextOutput: cleanText(mojibakeProbe),
-      fixMojibakeOutput: fixMojibake(mojibakeProbe),
-    },
-    topAncestorClasses,
-    tileSnippet,
-  };
-}
-
 async function notify(env: Env, w: Watch, ev: Event): Promise<void> {
   if (!env.BARK_BASE) {
     console.warn('BARK_BASE not set, skipping:', ev.kind, ev.product.url);
