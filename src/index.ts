@@ -42,6 +42,22 @@ export default {
       }
       return Response.json(out);
     }
+    if (url.pathname === '/test-push') {
+      if (!env.BARK_BASE) return new Response('BARK_BASE not set\n', { status: 500 });
+      const r = await fetch(env.BARK_BASE, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: 'apple-refurb-watcher test',
+          body: `End-to-end test at ${new Date().toISOString()}`,
+          group: 'apple-refurb-test',
+        }),
+      });
+      return new Response(`bark HTTP ${r.status}\n${await r.text()}\n`, {
+        status: r.ok ? 200 : 500,
+        headers: { 'content-type': 'text/plain' },
+      });
+    }
     if (url.pathname === '/debug') {
       const region = (url.searchParams.get('region') || 'au').toLowerCase();
       const category = (url.searchParams.get('category') || 'mac').toLowerCase();
@@ -54,6 +70,7 @@ export default {
         'GET /run                          trigger a check now',
         'GET /state                        inspect last saved snapshots',
         'GET /debug?region=au&category=mac inspect parser against live HTML',
+        'GET /test-push                    fire a test Bark notification',
         '',
         `watching: ${env.WATCH}`,
       ].join('\n'),
@@ -112,7 +129,26 @@ function fetchApple(url: string): Promise<Response> {
 }
 
 function decodeUtf8(buf: ArrayBuffer): string {
-  return new TextDecoder('utf-8').decode(buf);
+  return fixMojibake(new TextDecoder('utf-8').decode(buf));
+}
+
+// Apple's refurb pages omit charset, so the Workers runtime decodes the body
+// as Latin-1 then hands us bytes that are UTF-8 of that mis-decoded string.
+// Detect the telltale patterns and undo by treating each codepoint as a raw
+// byte and re-decoding as UTF-8.
+function fixMojibake(s: string): string {
+  if (!/Ã.|Â[\s]|â€/.test(s)) return s;
+  const bytes = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    if (code > 0xff) return s;
+    bytes[i] = code;
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    return s;
+  }
 }
 
 async function checkOne(w: Watch, env: Env): Promise<void> {
