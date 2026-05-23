@@ -111,11 +111,15 @@ function fetchApple(url: string): Promise<Response> {
   });
 }
 
+function decodeUtf8(buf: ArrayBuffer): string {
+  return new TextDecoder('utf-8').decode(buf);
+}
+
 async function checkOne(w: Watch, env: Env): Promise<void> {
   const url = pageUrl(w);
   const res = await fetchApple(url);
   if (!res.ok) throw new Error(`fetch ${url} -> HTTP ${res.status}`);
-  const html = await res.text();
+  const html = decodeUtf8(await res.arrayBuffer());
 
   const products = parseProducts(html);
   if (products.length === 0) {
@@ -154,7 +158,7 @@ async function checkOne(w: Watch, env: Env): Promise<void> {
 function parseProducts(html: string): Product[] {
   const root = parse(html);
   const tiles: HTMLElement[] = [
-    ...root.querySelectorAll('li.refurbished-category-grid-no-js'),
+    ...root.querySelectorAll('div.rf-refurb-category-grid-no-js li'),
     ...root.querySelectorAll('ul.as-producttile-grid > li'),
     ...root.querySelectorAll('[data-analytics-section="grid"] li'),
   ];
@@ -185,7 +189,7 @@ function parseProducts(html: string): Product[] {
   }
 
   if (products.length === 0) {
-    const re = /<a[^>]+href="(\/(?:[a-z]{2}\/)?shop\/product\/[A-Z0-9]+\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+    const re = /<a[^>]+href="(\/(?:[a-z]{2}\/)?shop\/product\/[A-Za-z0-9]+\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
     let m: RegExpExecArray | null;
     while ((m = re.exec(html))) {
       const url = absolutize(m[1].split('?')[0]);
@@ -207,9 +211,9 @@ async function debugPage(w: Watch): Promise<unknown> {
   const url = pageUrl(w);
   const res = await fetchApple(url);
   if (!res.ok) return { url, httpStatus: res.status, ok: false };
-  const html = await res.text();
+  const html = decodeUtf8(await res.arrayBuffer());
 
-  const hrefRe = /href="(\/(?:[a-z]{2}\/)?shop\/product\/[A-Z0-9]+\/[^"]+)"/g;
+  const hrefRe = /href="(\/(?:[a-z]{2}\/)?shop\/product\/[A-Za-z0-9]+\/[^"]+)"/gi;
   const hrefs = new Set<string>();
   let m: RegExpExecArray | null;
   while ((m = hrefRe.exec(html))) hrefs.add(m[1].split('?')[0]);
