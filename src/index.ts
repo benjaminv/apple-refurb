@@ -32,19 +32,21 @@ export default {
 
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
+    const noStore = { 'cache-control': 'no-store' };
     if (url.pathname === '/run') {
       await runAll(env);
-      return new Response('ok\n');
+      return new Response('ok\n', { headers: noStore });
     }
     if (url.pathname === '/state') {
       const out: Record<string, Snapshot | null> = {};
       for (const w of parseWatches(env.WATCH)) {
         out[`${w.region}:${w.category}`] = await env.STATE.get<Snapshot>(stateKey(w), 'json');
       }
-      return Response.json(out);
+      return Response.json(out, { headers: noStore });
     }
     if (url.pathname === '/test-push') {
-      if (!env.BARK_BASE) return new Response('BARK_BASE not set\n', { status: 500 });
+      if (!env.BARK_BASE)
+        return new Response('BARK_BASE not set\n', { status: 500, headers: noStore });
       const tz = env.TZ || (req.cf?.timezone as string | undefined);
       const r = await fetch(env.BARK_BASE, {
         method: 'POST',
@@ -57,7 +59,7 @@ export default {
       });
       return new Response(`bark HTTP ${r.status}\n${await r.text()}\n`, {
         status: r.ok ? 200 : 500,
-        headers: { 'content-type': 'text/plain' },
+        headers: { 'content-type': 'text/plain', ...noStore },
       });
     }
     if (url.pathname === '/raw') {
@@ -68,7 +70,7 @@ export default {
       const html = decodeUtf8(await r.arrayBuffer());
       return new Response(html, {
         status: r.status,
-        headers: { 'content-type': 'text/plain; charset=utf-8' },
+        headers: { 'content-type': 'text/plain; charset=utf-8', ...noStore },
       });
     }
     return new Response(
@@ -82,7 +84,7 @@ export default {
         '',
         `watching: ${env.WATCH}`,
       ].join('\n'),
-      { headers: { 'content-type': 'text/plain' } },
+      { headers: { 'content-type': 'text/plain', ...noStore } },
     );
   },
 };
