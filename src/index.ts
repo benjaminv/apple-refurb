@@ -4,6 +4,7 @@ interface Env {
   STATE: KVNamespace;
   WATCH: string;
   BARK_BASE: string;
+  TZ?: string;
 }
 
 interface Watch {
@@ -49,7 +50,7 @@ export default {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           title: 'apple-refurb-watcher test',
-          body: `End-to-end test at ${new Date().toISOString()}`,
+          body: `End-to-end test at ${formatLocalTime(new Date(), env.TZ)}`,
           group: 'apple-refurb-test',
         }),
       });
@@ -126,6 +127,11 @@ function fetchApple(url: string): Promise<Response> {
     },
     cf: { cacheTtl: 0, cacheEverything: false },
   });
+}
+
+function formatLocalTime(d: Date, tz?: string): string {
+  const timeZone = tz || 'Australia/Sydney';
+  return d.toLocaleString('sv-SE', { timeZone }) + ` ${timeZone}`;
 }
 
 function decodeUtf8(buf: ArrayBuffer): string {

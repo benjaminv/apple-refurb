@@ -19,6 +19,9 @@ id = "504f111abc3e493f97231c5469e6c97d"
 # Category: "mac", "ipad", "iphone", "appletv", "homepod", "airpods", "accessories".
 # Worker only fetches pages listed here.
 WATCH = "au:mac"
+# Timezone for human-readable timestamps in test notifications.
+# IANA name, e.g. "Australia/Sydney", "America/Los_Angeles", "Europe/London".
+TZ = "Australia/Sydney"
 
 # BARK_BASE is your push endpoint, e.g. https://api.day.app/<device_key>
 # Set as a secret rather than committing it:
