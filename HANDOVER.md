@@ -26,36 +26,24 @@ only fetches what's listed.
 
 ## What is NOT confirmed working
 
-1. **The real notification path.** We've never observed an end-to-end
-   "Apple inventory changed → Bark push fires". The mechanism works
-   (`/test-push` proves the wire), but no diff has triggered in the
-   wild during this session. Watch the logs over a day or two and
-   confirm.
+**The real notification path.** We've never observed an end-to-end
+"Apple inventory changed → Bark push fires" in the wild. The
+mechanism works (`/test-push` proves the wire and `/state` confirms
+the diff source is correct), but no inventory diff has triggered
+during this session. Watch logs over a day or two to confirm.
 
-2. **KV mojibake paradox.** `/raw` shows clean UTF-8 (`MacBook Pro`,
-   `10‑Core`, `—`), but the last `/state` we inspected still showed
-   `MacBookÂ Pro`, `10â€'Core`, `â€"`. After the parser + decoding
-   fixes landed the user did NOT trigger a fresh `/run`, so the KV
-   may simply be stale. **First desktop action: hit `/run`, then
-   `/state`. If still mojibake, the bug is real and needs digging.**
+## Resolved during the session
 
-## Outstanding mystery (if mojibake persists after fresh /run)
+**Mojibake.** Was real for a while, then fixed itself when
+Apple/Cloudflare started returning clean UTF-8 (charset detection
+behaviour seems to have changed mid-session). The eventual
+"persistent mojibake in /state" turned out to be **iOS Safari
+caching the old `/state` response**; bypassed with `?x=N` cache
+buster. The `fixMojibake()` Windows-1252 reverse map in
+`src/index.ts` remains as defensive code in case the original
+decoding regresses.
 
-Two theories worth testing:
-
-- **Cloudflare's `arrayBuffer()` isn't returning raw network bytes.**
-  When Apple's response has no `charset` directive, the Workers
-  runtime may decode the body as Windows-1252 internally and re-encode
-  as UTF-8 when you call `arrayBuffer()`. Our `decodeUtf8()` then
-  produces mojibake. The `fixMojibake()` Windows-1252 reverse map in
-  `src/index.ts` is defensive code for exactly this case, but it has
-  never been observed to fire in production (we couldn't get clean
-  diagnostics from mobile).
-
-- **Stale Cloudflare cache somewhere.** We set `cacheTtl: 0` on the
-  fetch, but it's worth a `wrangler tail` to confirm fresh fetches.
-
-### How to diagnose on desktop
+### Local debug recipe (if anything regresses)
 
 ```bash
 git clone git@github.com:benjaminv/apple-refurb.git
