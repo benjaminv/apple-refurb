@@ -34,7 +34,8 @@ baseline. Subsequent runs notify on diffs.
    Bark server URL.
 
 3. **Add three GitHub Actions secrets** at
-   `Settings → Secrets and variables → Actions`:
+   `Settings → Environments → production` (the workflow is bound to this
+   environment):
 
    | Secret | Where to get it |
    | --- | --- |
