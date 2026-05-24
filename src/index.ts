@@ -4,6 +4,7 @@ interface Env {
   STATE: KVNamespace;
   WATCH: string;
   BARK_BASE: string;
+  API_KEY: string;
   TZ?: string;
 }
 
@@ -33,6 +34,14 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     const noStore = { 'cache-control': 'no-store' };
+
+    if (url.pathname !== '/') {
+      const key = url.searchParams.get('key') || req.headers.get('x-api-key') || '';
+      if (!env.API_KEY || key !== env.API_KEY) {
+        return new Response('unauthorized\n', { status: 401, headers: noStore });
+      }
+    }
+
     if (url.pathname === '/run') {
       await runAll(env);
       return new Response('ok\n', { headers: noStore });
