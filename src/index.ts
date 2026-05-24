@@ -6,6 +6,7 @@ interface Env {
   BARK_BASE: string;
   API_KEY: string;
   TZ?: string;
+  NOTIFY?: string;
 }
 
 interface Watch {
@@ -22,9 +23,13 @@ interface Product {
 
 type Snapshot = Record<string, { name: string; price: string; priceNum: number }>;
 
+type EventKind = 'new' | 'drop' | 'up' | 'removed';
+
 type Event =
   | { kind: 'new'; product: Product }
-  | { kind: 'drop'; product: Product; oldPrice: string };
+  | { kind: 'drop'; product: Product; oldPrice: string }
+  | { kind: 'up'; product: Product; oldPrice: string }
+  | { kind: 'removed'; product: Product };
 
 export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
@@ -216,6 +221,7 @@ async function checkOne(w: Watch, env: Env): Promise<void> {
     return;
   }
 
+  const kinds = parseNotifyKinds(env.NOTIFY);
   const events: Event[] = [];
   for (const p of products) {
     const prev = previous[p.url];
@@ -223,12 +229,22 @@ async function checkOne(w: Watch, env: Env): Promise<void> {
       events.push({ kind: 'new', product: p });
     } else if (p.priceNum > 0 && prev.priceNum > 0 && p.priceNum < prev.priceNum) {
       events.push({ kind: 'drop', product: p, oldPrice: prev.price });
+    } else if (p.priceNum > 0 && prev.priceNum > 0 && p.priceNum > prev.priceNum) {
+      events.push({ kind: 'up', product: p, oldPrice: prev.price });
+    }
+  }
+  for (const [url, prev] of Object.entries(previous)) {
+    if (!current[url]) {
+      events.push({ kind: 'removed', product: { url, name: prev.name, price: prev.price, priceNum: prev.priceNum } });
     }
   }
 
-  for (const ev of events) await notify(env, w, ev);
+  let sent = 0;
+  for (const ev of events) {
+    if (kinds.has(ev.kind)) { await notify(env, w, ev); sent++; }
+  }
   console.log(
-    `[${w.region}:${w.category}] ${products.length} products, ${events.length} notifications`,
+    `[${w.region}:${w.category}] ${products.length} products, ${events.length} changes, ${sent} notified`,
   );
 }
 
@@ -280,6 +296,15 @@ function parseProducts(html: string): Product[] {
   return products;
 }
 
+const DEFAULT_NOTIFY: EventKind[] = ['new', 'drop'];
+
+function parseNotifyKinds(raw?: string): Set<EventKind> {
+  if (!raw) return new Set(DEFAULT_NOTIFY);
+  const valid = new Set<EventKind>(['new', 'drop', 'up', 'removed']);
+  const kinds = raw.split(',').map((s) => s.trim().toLowerCase()).filter((s) => valid.has(s as EventKind)) as EventKind[];
+  return new Set(kinds.length ? kinds : DEFAULT_NOTIFY);
+}
+
 function cleanText(s: string): string {
   return fixMojibake(s.replace(/\s+/g, ' ').trim());
 }
@@ -290,11 +315,19 @@ async function notify(env: Env, w: Watch, ev: Event): Promise<void> {
     return;
   }
   const tag = `${w.region.toUpperCase()} ${w.category}`;
-  const title = ev.kind === 'new' ? `New refurb · ${tag}` : `Price drop · ${tag}`;
+  const titles: Record<EventKind, string> = {
+    new: `New refurb · ${tag}`,
+    drop: `Price drop · ${tag}`,
+    up: `Price up · ${tag}`,
+    removed: `Sold out · ${tag}`,
+  };
+  const title = titles[ev.kind];
   const body =
     ev.kind === 'new'
       ? `${ev.product.name}${ev.product.price ? ' — ' + ev.product.price : ''}`
-      : `${ev.product.name}: ${ev.oldPrice} → ${ev.product.price}`;
+      : ev.kind === 'removed'
+        ? ev.product.name
+        : `${ev.product.name}: ${ev.oldPrice} → ${ev.product.price}`;
 
   const payload = {
     title,

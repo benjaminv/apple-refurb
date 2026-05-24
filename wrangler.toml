@@ -26,6 +26,10 @@ WATCH = "au:mac,au:ipad,au:watch,au:appletv,au:homepod,au:airpods,au:accessories
 # Set TZ here to force a fixed zone, e.g. "Australia/Sydney".
 # TZ = "Australia/Sydney"
 
+# Which events to notify on. Comma-separated, any of: new, drop, up, removed.
+# Default (if unset): "new,drop"
+NOTIFY = "new,drop,up,removed"
+
 # BARK_BASE is your push endpoint, e.g. https://api.day.app/<device_key>
 # Set as a secret rather than committing it:
 #   wrangler secret put BARK_BASE
