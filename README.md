@@ -33,7 +33,7 @@ baseline. Subsequent runs notify on diffs.
    it looks like `https://api.day.app/AbC123dEf/`. Or use your self-hosted
    Bark server URL.
 
-3. **Add three GitHub Actions secrets** at
+3. **Add four GitHub Actions secrets** at
    `Settings → Environments → production` (the workflow is bound to this
    environment):
 
@@ -42,6 +42,12 @@ baseline. Subsequent runs notify on diffs.
    | `CLOUDFLARE_API_TOKEN` | https://dash.cloudflare.com/profile/api-tokens → "Edit Cloudflare Workers" template |
    | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard, right sidebar |
    | `BARK_BASE` | The Bark URL from step 2 |
+   | `API_KEY` | A random secret string (e.g. `openssl rand -hex 16`). Required to access HTTP endpoints. |
+
+   Then push the secret to the Worker:
+   ```bash
+   echo "your-key-here" | npx wrangler secret put API_KEY
+   ```
 
 4. **Edit `WATCH`** in `wrangler.toml` — comma-separated `region:category`:
 
@@ -59,19 +65,22 @@ baseline. Subsequent runs notify on diffs.
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars   # then edit BARK_BASE
+cp .dev.vars.example .dev.vars   # then edit BARK_BASE and API_KEY
 npm run dev
 # in another terminal:
-curl http://localhost:8787/run
+curl "http://localhost:8787/run?key=YOUR_API_KEY"
 ```
 
 ## Manual endpoints
 
-Once deployed, the Worker also responds to plain HTTP:
+All endpoints except `/` require authentication via `?key=YOUR_API_KEY` query
+parameter or `x-api-key` header. Unauthenticated requests return `401`.
 
-- `GET /`        — health page, shows the configured `WATCH`
-- `GET /run`     — trigger a check immediately (useful for testing)
-- `GET /state`   — JSON dump of the last saved snapshot per watch
+- `GET /`            — health page, shows the configured `WATCH` (public)
+- `GET /run`         — trigger a check immediately (useful for testing)
+- `GET /state`       — JSON dump of the last saved snapshot per watch
+- `GET /raw`         — fetch Apple's page as text/plain (view source)
+- `GET /test-push`   — fire a test Bark notification to your phone
 
 ## Regions & categories
 
