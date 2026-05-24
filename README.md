@@ -1,10 +1,9 @@
 # apple-refurb-watcher
 
 A tiny Cloudflare Worker that polls Apple's refurbished store pages and sends a
-[Bark](https://github.com/Finb/Bark) push notification to your phone when:
-
-- a new product appears, or
-- the price of an existing product drops.
+[Bark](https://github.com/Finb/Bark) push notification to your phone when
+inventory changes — new listings, price drops, price increases, or sold-out
+removals (configurable).
 
 Configurable per region and category — the Worker only fetches what you list.
 
@@ -16,7 +15,7 @@ Configurable per region and category — the Worker only fetches what you list.
    (US has no region prefix).
 3. Tiles are parsed out of the HTML; the snapshot (`url → name, price`) is
    compared against the previous snapshot in Workers KV.
-4. New SKUs and price drops are POSTed to your Bark endpoint.
+4. Changes (new SKUs, price drops, etc.) are POSTed to your Bark endpoint.
 
 The first run for a new `region:category` is silent — it only writes the
 baseline. Subsequent runs notify on diffs.
@@ -24,9 +23,9 @@ baseline. Subsequent runs notify on diffs.
 ## Setup (deploy via GitHub Actions — no local wrangler needed)
 
 1. **Create a KV namespace** in the Cloudflare dashboard:
-   Workers & Pages → KV → Create namespace, name it `STATE`.
-   Copy the id and paste it into `wrangler.toml` (replacing
-   `REPLACE_WITH_KV_NAMESPACE_ID`). Commit and push.
+   Workers & Pages → KV → Create namespace, name it whatever you like (e.g.
+   `apple-refurb-STATE`). Copy the namespace ID and replace the `id` value
+   under `[[kv_namespaces]]` in `wrangler.toml`. Commit and push.
 
 2. **Get your Bark URL** from the Bark iOS app
    (https://github.com/Finb/Bark). Open the app and copy the URL at the top —
@@ -44,11 +43,6 @@ baseline. Subsequent runs notify on diffs.
    | `BARK_BASE` | The Bark URL from step 2 |
    | `API_KEY` | A random secret string (e.g. `openssl rand -hex 16`). Required to access HTTP endpoints. |
 
-   Then push the secret to the Worker:
-   ```bash
-   echo "your-key-here" | npx wrangler secret put API_KEY
-   ```
-
 4. **Edit `WATCH`** in `wrangler.toml` — comma-separated `region:category`:
 
    ```
@@ -59,7 +53,7 @@ baseline. Subsequent runs notify on diffs.
 
 5. **Deploy.** Push to `main`, or trigger the `Deploy` workflow manually from
    the Actions tab (works from any branch). The workflow typechecks, pushes
-   `BARK_BASE` as a Worker secret, then `wrangler deploy`s.
+   `BARK_BASE` and `API_KEY` as Worker secrets, then `wrangler deploy`s.
 
 ### Local development (optional)
 
@@ -79,7 +73,7 @@ parameter or `x-api-key` header. Unauthenticated requests return `401`.
 - `GET /`            — health page, shows the configured `WATCH` (public)
 - `GET /run`         — trigger a check immediately (useful for testing)
 - `GET /state`       — JSON dump of the last saved snapshot per watch
-- `GET /raw`         — fetch Apple's page as text/plain (view source)
+- `GET /raw?region=au&category=mac` — fetch Apple's page as text/plain (view source)
 - `GET /test-push`   — fire a test Bark notification to your phone
 
 ## Regions & categories
@@ -94,9 +88,29 @@ If a watch logs `parsed 0 products`, either the region/category combo doesn't
 exist there, or Apple changed the HTML — adjust the selectors in
 `parseProducts()` in `src/index.ts`.
 
+## Notification types
+
+Control which events trigger a push via the `NOTIFY` var in `wrangler.toml`:
+
+| Kind | Description | Default |
+| --- | --- | --- |
+| `new` | A new product appears | yes |
+| `drop` | Price decreased | yes |
+| `up` | Price increased | no |
+| `removed` | Product disappeared (sold out) | no |
+
+```toml
+# Default — only new listings and price drops:
+# NOTIFY = "new,drop"
+
+# Everything:
+NOTIFY = "new,drop,up,removed"
+```
+
+If `NOTIFY` is unset, defaults to `new,drop`.
+
 ## Notes
 
 - Polling interval is in `wrangler.toml` (`crons = ["*/10 * * * *"]`).
 - Bark notifications are grouped per `apple-refurb-<region>-<category>` so
   they collapse nicely on iOS.
-- Removed products (sold out) are intentionally not notified — keep it simple.
