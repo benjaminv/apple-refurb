@@ -301,7 +301,7 @@ async function notify(env: Env, w: Watch, ev: Event): Promise<void> {
   const title = titles[ev.kind];
   const body =
     ev.kind === 'new'
-      ? `${ev.product.name}${ev.product.price ? ' — ' + ev.product.price : ''}`
+      ? `${ev.product.name}${ev.product.price ? ' - ' + ev.product.price : ''}`
       : ev.kind === 'removed'
         ? ev.product.name
         : `${ev.product.name}: ${ev.oldPrice} → ${ev.product.price}`;
