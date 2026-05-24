@@ -21,7 +21,7 @@ interface Product {
   priceNum: number;
 }
 
-type Snapshot = Record<string, { name: string; price: string; priceNum: number }>;
+type Snapshot = Record<string, { url: string; name: string; price: string; priceNum: number }>;
 
 type EventKind = 'new' | 'drop' | 'up' | 'removed';
 
@@ -40,7 +40,8 @@ export default {
     const url = new URL(req.url);
     const noStore = { 'cache-control': 'no-store' };
 
-    if (url.pathname !== '/') {
+    const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+    if (url.pathname !== '/' && !isLocal) {
       const key = url.searchParams.get('key') || req.headers.get('x-api-key') || '';
       if (!env.API_KEY || key !== env.API_KEY) {
         return new Response('unauthorized\n', { status: 401, headers: noStore });
@@ -131,13 +132,24 @@ function stateKey(w: Watch): string {
   return `state:${w.region}:${w.category}`;
 }
 
-function pageUrl(w: Watch): string {
-  const prefix = w.region === 'us' ? '' : `/${w.region}`;
-  return `https://www.apple.com${prefix}/shop/refurbished/${w.category}`;
+function baseUrl(region: string): string {
+  if (region === 'cn') return 'https://www.apple.com.cn';
+  return 'https://www.apple.com';
 }
 
-function absolutize(href: string): string {
-  return href.startsWith('http') ? href : `https://www.apple.com${href}`;
+function pageUrl(w: Watch): string {
+  const base = baseUrl(w.region);
+  const prefix = w.region === 'us' || w.region === 'cn' ? '' : `/${w.region}`;
+  return `${base}${prefix}/shop/refurbished/${w.category}`;
+}
+
+function absolutize(href: string, region: string): string {
+  return href.startsWith('http') ? href : `${baseUrl(region)}${href}`;
+}
+
+function productCode(url: string): string {
+  const m = url.match(/\/shop\/product\/([^/?]+(?:\/[^/?]+)?)/);
+  return m ? m[1].toLowerCase() : url;
 }
 
 function fetchApple(url: string): Promise<Response> {
@@ -161,56 +173,20 @@ function decodeUtf8(buf: ArrayBuffer): string {
   return new TextDecoder('utf-8').decode(buf);
 }
 
-// Apple's refurb pages have no charset header, so the Workers runtime
-// pre-decodes the body as Windows-1252 and we receive UTF-8 bytes of that
-// mis-decoded string. Reverse: re-encode each char as Windows-1252, decode
-// as UTF-8. Applied per-text-string (not whole-HTML) so unaffected chars
-// elsewhere on the page don't make us bail.
-const CP1252_HIGH: Record<number, number> = {
-  0x20ac: 0x80, 0x201a: 0x82, 0x0192: 0x83, 0x201e: 0x84, 0x2026: 0x85,
-  0x2020: 0x86, 0x2021: 0x87, 0x02c6: 0x88, 0x2030: 0x89, 0x0160: 0x8a,
-  0x2039: 0x8b, 0x0152: 0x8c, 0x017d: 0x8e, 0x2018: 0x91, 0x2019: 0x92,
-  0x201c: 0x93, 0x201d: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97,
-  0x02dc: 0x98, 0x2122: 0x99, 0x0161: 0x9a, 0x203a: 0x9b, 0x0153: 0x9c,
-  0x017e: 0x9e, 0x0178: 0x9f,
-};
-
-function fixMojibake(s: string): string {
-  if (!/Ã.|Â.|â€/.test(s)) return s;
-  const bytes: number[] = [];
-  for (let i = 0; i < s.length; i++) {
-    const code = s.charCodeAt(i);
-    if (code < 0x80 || (code >= 0xa0 && code <= 0xff)) {
-      bytes.push(code);
-    } else if (code in CP1252_HIGH) {
-      bytes.push(CP1252_HIGH[code]);
-    } else {
-      return s;
-    }
-  }
-  try {
-    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(
-      new Uint8Array(bytes),
-    );
-  } catch {
-    return s;
-  }
-}
-
 async function checkOne(w: Watch, env: Env): Promise<void> {
   const url = pageUrl(w);
   const res = await fetchApple(url);
   if (!res.ok) throw new Error(`fetch ${url} -> HTTP ${res.status}`);
   const html = decodeUtf8(await res.arrayBuffer());
 
-  const products = parseProducts(html);
+  const products = parseProducts(html, w.region);
   if (products.length === 0) {
     console.warn(`[${w.region}:${w.category}] parsed 0 products from ${url} (selectors may need updating)`);
     return;
   }
 
   const current: Snapshot = {};
-  for (const p of products) current[p.url] = { name: p.name, price: p.price, priceNum: p.priceNum };
+  for (const p of products) current[productCode(p.url)] = { url: p.url, name: p.name, price: p.price, priceNum: p.priceNum };
 
   const key = stateKey(w);
   const previous = await env.STATE.get<Snapshot>(key, 'json');
@@ -224,7 +200,8 @@ async function checkOne(w: Watch, env: Env): Promise<void> {
   const kinds = parseNotifyKinds(env.NOTIFY);
   const events: Event[] = [];
   for (const p of products) {
-    const prev = previous[p.url];
+    const code = productCode(p.url);
+    const prev = previous[code];
     if (!prev) {
       events.push({ kind: 'new', product: p });
     } else if (p.priceNum > 0 && prev.priceNum > 0 && p.priceNum < prev.priceNum) {
@@ -233,9 +210,9 @@ async function checkOne(w: Watch, env: Env): Promise<void> {
       events.push({ kind: 'up', product: p, oldPrice: prev.price });
     }
   }
-  for (const [url, prev] of Object.entries(previous)) {
-    if (!current[url]) {
-      events.push({ kind: 'removed', product: { url, name: prev.name, price: prev.price, priceNum: prev.priceNum } });
+  for (const [code, prev] of Object.entries(previous)) {
+    if (!current[code]) {
+      events.push({ kind: 'removed', product: { url: prev.url, name: prev.name, price: prev.price, priceNum: prev.priceNum } });
     }
   }
 
@@ -248,7 +225,7 @@ async function checkOne(w: Watch, env: Env): Promise<void> {
   );
 }
 
-function parseProducts(html: string): Product[] {
+function parseProducts(html: string, region: string): Product[] {
   const root = parse(html);
   const tiles: HTMLElement[] = [
     ...root.querySelectorAll('div.rf-refurb-category-grid-no-js li'),
@@ -264,7 +241,7 @@ function parseProducts(html: string): Product[] {
     if (!anchor) continue;
     const href = (anchor.getAttribute('href') || '').split('?')[0];
     if (!href) continue;
-    const url = absolutize(href);
+    const url = absolutize(href, region);
     if (seen.has(url)) continue;
     seen.add(url);
 
@@ -285,7 +262,7 @@ function parseProducts(html: string): Product[] {
     const re = /<a[^>]+href="(\/(?:[a-z]{2}\/)?shop\/product\/[A-Za-z0-9]+\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
     let m: RegExpExecArray | null;
     while ((m = re.exec(html))) {
-      const url = absolutize(m[1].split('?')[0]);
+      const url = absolutize(m[1].split('?')[0], region);
       if (seen.has(url)) continue;
       seen.add(url);
       const name = cleanText(m[2].replace(/<[^>]+>/g, ''));
@@ -306,7 +283,7 @@ function parseNotifyKinds(raw?: string): Set<EventKind> {
 }
 
 function cleanText(s: string): string {
-  return fixMojibake(s.replace(/\s+/g, ' ').trim());
+  return s.replace(/\s+/g, ' ').trim();
 }
 
 async function notify(env: Env, w: Watch, ev: Event): Promise<void> {
