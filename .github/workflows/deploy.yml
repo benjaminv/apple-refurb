@@ -28,5 +28,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           secrets: |
             BARK_BASE
+            API_KEY
         env:
           BARK_BASE: ${{ secrets.BARK_BASE }}
+          API_KEY: ${{ secrets.API_KEY }}
