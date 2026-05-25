@@ -18,7 +18,8 @@ id = "504f111abc3e493f97231c5469e6c97d"
 # Region: "us" (no path prefix) or a country code like "au", "uk", "ca", "jp", "de".
 # Category: "mac", "ipad", "iphone", "appletv", "homepod", "airpods", "accessories".
 # Worker only fetches pages listed here.
-WATCH = "au:mac,au:ipad,au:watch,au:appletv,au:homepod,au:airpods,au:accessories,cn:mac"
+# WATCH = "au:mac,au:ipad,au:watch,au:appletv,au:homepod,au:airpods,au:accessories,cn:mac"
+WATCH = "au:mac,cn:mac"
 
 # Optional timezone override for timestamps in /test-push notifications.
 # Default behaviour: use the requester's IP-geolocated timezone (via
@@ -29,6 +30,13 @@ WATCH = "au:mac,au:ipad,au:watch,au:appletv,au:homepod,au:airpods,au:accessories
 # Which events to notify on. Comma-separated, any of: new, drop, up, removed.
 # Default (if unset): "new,drop"
 NOTIFY = "new,drop,up,removed"
+
+# Bark notification level. Controls iOS notification prominence.
+# Options: "active" (default iOS), "timeSensitive" (breaks through Focus/DND),
+#          "critical" (plays sound even on silent).
+# Can be per-event: "new:timeSensitive,drop:timeSensitive,removed:active"
+# Or a single value applied to all events: "timeSensitive"
+BARK_LEVEL = "timeSensitive"
 
 # BARK_BASE is your push endpoint, e.g. https://api.day.app/<device_key>
 # Set as a secret rather than committing it:

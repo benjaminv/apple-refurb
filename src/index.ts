@@ -7,6 +7,7 @@ interface Env {
   API_KEY: string;
   TZ?: string;
   NOTIFY?: string;
+  BARK_LEVEL?: string;
 }
 
 interface Watch {
@@ -198,6 +199,7 @@ async function checkOne(w: Watch, env: Env): Promise<void> {
   }
 
   const kinds = parseNotifyKinds(env.NOTIFY);
+  const barkLevels = parseBarkLevels(env.BARK_LEVEL);
   const events: Event[] = [];
   for (const p of products) {
     const code = productCode(p.url);
@@ -218,7 +220,7 @@ async function checkOne(w: Watch, env: Env): Promise<void> {
 
   let sent = 0;
   for (const ev of events) {
-    if (kinds.has(ev.kind)) { await notify(env, w, ev); sent++; }
+    if (kinds.has(ev.kind)) { await notify(env, w, ev, barkLevels(ev.kind)); sent++; }
   }
   console.log(
     `[${w.region}:${w.category}] ${products.length} products, ${events.length} changes, ${sent} notified`,
@@ -282,11 +284,38 @@ function parseNotifyKinds(raw?: string): Set<EventKind> {
   return new Set(kinds.length ? kinds : DEFAULT_NOTIFY);
 }
 
+type BarkLevel = 'active' | 'timeSensitive' | 'critical';
+
+function parseBarkLevels(raw?: string): (kind: EventKind) => BarkLevel {
+  const validLevels = new Set<BarkLevel>(['active', 'timeSensitive', 'critical']);
+  const validKinds = new Set<EventKind>(['new', 'drop', 'up', 'removed']);
+  if (!raw) return () => 'active';
+  if (validLevels.has(raw as BarkLevel)) {
+    const level = raw as BarkLevel;
+    return () => level;
+  }
+  const map = new Map<EventKind, BarkLevel>();
+  for (const entry of raw.split(',')) {
+    const [kind, level] = entry.split(':').map((s) => s.trim());
+    if (!kind || !level) continue;
+    if (!validKinds.has(kind as EventKind)) {
+      console.warn(`BARK_LEVEL: unknown event kind "${kind}", ignoring`);
+      continue;
+    }
+    if (!validLevels.has(level as BarkLevel)) {
+      console.warn(`BARK_LEVEL: unknown level "${level}" for kind "${kind}", ignoring`);
+      continue;
+    }
+    map.set(kind as EventKind, level as BarkLevel);
+  }
+  return (kind) => map.get(kind) ?? 'active';
+}
+
 function cleanText(s: string): string {
   return s.replace(/\s+/g, ' ').trim();
 }
 
-async function notify(env: Env, w: Watch, ev: Event): Promise<void> {
+async function notify(env: Env, w: Watch, ev: Event, level: BarkLevel = 'active'): Promise<void> {
   if (!env.BARK_BASE) {
     console.warn('BARK_BASE not set, skipping:', ev.kind, ev.product.url);
     return;
@@ -311,6 +340,7 @@ async function notify(env: Env, w: Watch, ev: Event): Promise<void> {
     body,
     url: ev.product.url,
     group: `apple-refurb-${w.region}-${w.category}`,
+    ...(level !== 'active' && { level }),
   };
   const res = await fetch(env.BARK_BASE, {
     method: 'POST',
