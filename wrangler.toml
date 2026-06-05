@@ -19,7 +19,7 @@ id = "504f111abc3e493f97231c5469e6c97d"
 # Category: "mac", "ipad", "iphone", "appletv", "homepod", "airpods", "accessories".
 # Worker only fetches pages listed here.
 # WATCH = "au:mac,au:ipad,au:watch,au:appletv,au:homepod,au:airpods,au:accessories,cn:mac"
-WATCH = "au:mac,cn:mac"
+WATCH = "au:mac"
 
 # Optional timezone override for timestamps in /test-push notifications.
 # Default behaviour: use the requester's IP-geolocated timezone (via
